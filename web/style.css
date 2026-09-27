@@ -209,6 +209,29 @@ select { background: var(--panel); border: 1px solid var(--line); border-radius:
 }
 .moves li:hover, .moves li.hl { background: color-mix(in srgb, var(--sel) 10%, transparent); }
 .moves .mv { font-variant-numeric: tabular-nums; }
+.moves li.state-box {
+  display: flex; align-items: center; gap: 14px; cursor: default;
+  padding: 18px 16px; border-radius: 10px; margin: 2px 0;
+}
+.moves li.state-box:hover { background: none; }
+.state-box .title { font-size: 1.15rem; font-weight: 700; }
+.state-box .sub { font-size: 0.85rem; color: var(--muted); margin-top: 2px; }
+.moves li.state-box.loading {
+  background: color-mix(in srgb, var(--sel) 10%, transparent);
+  opacity: 0; animation: box-in 0.2s ease-out 0.35s forwards;  /* すぐ終わるときは出さない */
+}
+.moves li.state-box.over { background: var(--draw-bg); }
+.moves li.state-box.over .title { color: var(--ink); }
+.spinner {
+  flex: none; width: 26px; height: 26px; border-radius: 50%;
+  border: 3px solid color-mix(in srgb, var(--sel) 25%, transparent); border-top-color: var(--sel);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes box-in { to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; border-top-color: color-mix(in srgb, var(--sel) 25%, transparent); border-right-color: var(--sel); }
+}
 .moves .ev { font-weight: 700; font-size: 0.9rem; white-space: nowrap; }
 .moves .best-tag { font-size: 0.7rem; color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 0 4px; margin-left: 6px; }
 .win { color: var(--win); }

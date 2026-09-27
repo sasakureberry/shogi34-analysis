@@ -16,6 +16,7 @@ const state = {
   auto: null,
   play: null,               // { side, level, showEval, over }
   edit: null,               // { pos, brush }
+  netMsg: '',               // 通信エラーの知らせ（計算中の案内にも出す）
 };
 
 const cur = () => state.line[state.cur].pos;
@@ -373,14 +374,45 @@ function renderVerdict() {
   }).catch(() => {});  // 通信エラーは候補手の取り直し側で知らせる
 }
 
+// 候補手の欄に大きく出す案内（計算中・決着済み）
+function stateBox(kind, title, sub) {
+  const li = document.createElement('li');
+  li.className = 'state-box ' + kind;
+  li.setAttribute('role', 'status');
+  if (kind === 'loading') { const sp = document.createElement('span'); sp.className = 'spinner'; li.appendChild(sp); }
+  const tx = document.createElement('div');
+  const t = document.createElement('div'); t.className = 'title'; t.textContent = title;
+  const s = document.createElement('div'); s.className = 'sub'; s.textContent = sub;
+  tx.append(t, s);
+  li.appendChild(tx);
+  return li;
+}
+
 function renderMoves() {
   const ol = $('moves');
   ol.innerHTML = '';
   const note = $('moves-note');
   const p = cur();
   if (state.mode === 'edit') { note.textContent = ''; return; }
-  if (!state.evals) { note.textContent = '計算中…'; return; }
-  if (!state.evals.length) { note.textContent = '決着済み'; return; }
+  if (!state.evals) {
+    note.textContent = '';
+    ol.appendChild(stateBox('loading', '候補手を計算中…', state.netMsg || '解析データを取り寄せています'));
+    return;
+  }
+  if (!state.evals.length) {
+    note.textContent = '';
+    const g = R.gameResult(p), who = (o) => (o === 0 ? '先手' : '後手');
+    let title, sub, cls = 'over';
+    if (g) {
+      title = state.play ? (g.winner === state.play.side ? 'あなたの勝ち' : 'あなたの負け') : `${who(g.winner)}の勝ち`;
+      sub = g.reason === 'try' ? 'ライオンが相手の陣に入った（トライ）' : 'ライオンを取った';
+    } else {
+      title = '引き分け';
+      sub = '同じ局面が3回あらわれた（千日手）';
+    }
+    ol.appendChild(stateBox(cls, '決着済み：' + title, sub + (state.mode === 'analyze' ? '。◀ で戻って別の手を検討できます' : '')));
+    return;
+  }
   const visible = showEval();
   note.textContent = `${state.evals.length}通り`;
   for (const r of state.evals) {
@@ -602,7 +634,11 @@ function loadHash() {
 }
 
 // ---- その他 ----
-function setStatus(t) { $('status').textContent = t; }
+function setStatus(t) {
+  $('status').textContent = t;
+  state.netMsg = t;
+  if (!state.evals && state.mode !== 'edit' && state.mode !== 'help') renderMoves();
+}
 function toast(t) {
   const el = document.createElement('div');
   el.className = 'toast'; el.textContent = t;
