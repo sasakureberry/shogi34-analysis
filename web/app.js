@@ -58,7 +58,7 @@ const score = (r) => (r.kind === 'win' ? 1000 - r.plies : r.kind === 'draw' ? 0 
 
 async function evalMoves(p) {
   const moves = R.legalMoves(p);
-  const res = await Promise.all(moves.map(async (m) => ({ m, ...(await moveResult(p, m)) })));
+  const res = await Promise.all(moves.map(async (m, order) => ({ m, order, ...(await moveResult(p, m)) })));
   res.sort((a, b) => score(b) - score(a));
   const top = res.length ? score(res[0]) : null;
   for (const r of res) r.best = score(r) === top && r.kind !== 'none';
@@ -77,7 +77,12 @@ function refreshEvals() {
   state.evals = null;
   setStatus('');  // 前の局面での通信エラー表示は消す（また失敗したら出し直す）
   const p = cur();
-  if (R.gameResult(p) || repetitionDraw()) { state.evals = []; render(); return; }
+  if (R.gameResult(p) || repetitionDraw()) {
+    state.evals = [];
+    if (state.mode === 'play') checkGameOver();  // 対局の決着（知らせ・評価の公開）
+    render();
+    return;
+  }
   evalMoves(p).then((ev) => {
     if (token !== state.evalToken) return;
     state.evals = ev;
@@ -366,7 +371,7 @@ function renderVerdict() {
     if (token !== state.evalToken) return;
     const r = posResult(v);
     el.className = 'verdict';
-    if (r.kind === 'none') { el.innerHTML = `${turnText}<small>この局面の解析データはありません（初期局面から到達できない形）</small>`; return; }
+    if (r.kind === 'none') { el.innerHTML = `${turnText}<small>この局面の解析データはありません（編集で作った形や、ライオンを取れるのに取らなかった進行など）</small>`; return; }
     if (r.kind === 'draw') { el.innerHTML = `引き分け<small>${turnText}・お互い最善なら決着がつきません</small>`; el.classList.add('draw'); return; }
     const winner = r.kind === 'win' ? p.turn : 1 - p.turn;
     el.innerHTML = `${who(winner)}の勝ち（あと${r.plies}手）<small>${turnText}・お互い最善を尽くした場合</small>`;
@@ -415,7 +420,9 @@ function renderMoves() {
   }
   const visible = showEval();
   note.textContent = `${state.evals.length}通り`;
-  for (const r of state.evals) {
+  // 評価を隠しているときは良い順に並べない（一番上が最善手だと答えが見えてしまう）
+  const list = visible ? state.evals : [...state.evals].sort((a, b) => a.order - b.order);
+  for (const r of list) {
     const li = document.createElement('li');
     const mv = document.createElement('span');
     mv.className = 'mv';
@@ -541,7 +548,7 @@ function onHand(owner, t) {
 // ---- 局面編集 ----
 function enterEdit() {
   stopAuto();
-  state.edit = { pos: R.clonePos(cur()), brush: { t: R.L, o: 0 } };
+  state.edit = { pos: R.clonePos(cur()), brush: { t: R.L, o: 0 }, prevMode: state.mode };
   state.mode = 'edit';
   $('edit-msg').textContent = '';
   buildPalette();
@@ -615,7 +622,8 @@ function saveHash() {
   history.replaceState(null, '', '#' + s);
 }
 function loadHash() {
-  const h = decodeURIComponent(location.hash.slice(1));
+  let h;
+  try { h = decodeURIComponent(location.hash.slice(1)); } catch { return; }  // 壊れた URL は無視して初期局面から
   if (!h) return;
   const [code, mv = '', c = ''] = h.split('~');
   const start = R.fromCode(code);
@@ -708,7 +716,8 @@ function bind() {
     state.edit.pos = p; renderEdit();
   };
   $('edit-done').onclick = finishEdit;
-  $('edit-cancel').onclick = () => { state.edit = null; state.mode = 'analyze'; refreshEvals(); render(); };
+  // やめる: 編集前のモードに戻る（対局中なら対局を続ける）
+  $('edit-cancel').onclick = () => { state.mode = state.edit.prevMode; state.edit = null; refreshEvals(); render(); };
   $('play-start').onclick = () => startPlay(false);
   $('play-here').onclick = () => startPlay(true);
   $('play-show-eval').onchange = () => { if (state.play) state.play.showEval = $('play-show-eval').checked; render(); };
