@@ -9,6 +9,8 @@
 import { rankPos, mirrorPos } from './engine.js';
 
 export const DRAW = 255, NO_DATA = 254;
+const MAX_PARALLEL = 6;
+const RETRY_DELAYS = [300, 1000, 2500];
 
 export class Tablebase {
   constructor(base) {
@@ -30,27 +32,60 @@ export class Tablebase {
     this.blockSize = 2 ** meta.blockBits;
   }
 
+  // 同時に取りに行く数を絞る（一度に大量に投げると通信エラーになりやすい）
+  #active = 0;
+  #waiting = [];
+  async #limited(fn) {
+    if (this.#active >= MAX_PARALLEL) await new Promise((r) => this.#waiting.push(r));
+    this.#active++;
+    try { return await fn(); } finally {
+      this.#active--;
+      const next = this.#waiting.shift();
+      if (next) next();
+    }
+  }
+
+  async #fetchBlock(pack, off, len) {
+    const res = await fetch(this.base + this.meta.packs[pack], { headers: { Range: `bytes=${off}-${off + len - 1}` } });
+    if (!res.ok) throw new Error('解析データの取得に失敗しました（' + res.status + '）');
+    let buf = new Uint8Array(await res.arrayBuffer());
+    // Range を無視してファイル全体が返ってきた場合
+    if (res.status === 200 && buf.length !== len) buf = buf.subarray(off, off + len);
+    const ds = new Blob([buf]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Uint8Array(await new Response(ds).arrayBuffer());
+  }
+
   #block(b) {
     let pr = this.blocks.get(b);
     if (pr) return pr;
     pr = (async () => {
       const pack = this.index[b * 3], off = this.index[b * 3 + 1], len = this.index[b * 3 + 2];
       if (len === 0) return null;
-      const res = await fetch(this.base + this.meta.packs[pack], { headers: { Range: `bytes=${off}-${off + len - 1}` } });
-      if (!res.ok) throw new Error('解析データの取得に失敗しました（' + res.status + '）');
-      let buf = new Uint8Array(await res.arrayBuffer());
-      // Range を無視してファイル全体が返ってきた場合
-      if (res.status === 200 && buf.length !== len) buf = buf.subarray(off, off + len);
-      const ds = new Blob([buf]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-      return new Uint8Array(await new Response(ds).arrayBuffer());
+      // 失敗したら間隔をあけて取り直す
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await this.#limited(() => this.#fetchBlock(pack, off, len));
+        } catch (e) {
+          if (attempt >= RETRY_DELAYS.length) throw new Error('解析データを取得できませんでした（通信エラー）');
+          await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt]));
+        }
+      }
     })();
     pr.catch(() => this.blocks.delete(b));
     this.blocks.set(b, pr);
     return pr;
   }
 
+  // 目次の読み込みに失敗していたら読み直す
+  async #ensureReady() {
+    try { await this.ready; } catch {
+      this.ready = this.#load();
+      await this.ready;
+    }
+  }
+
   async byIndex(i) {
-    await this.ready;
+    await this.#ensureReady();
     const b = Math.floor(i / this.blockSize);
     const data = await this.#block(b);
     return data ? data[i - b * this.blockSize] : NO_DATA;
@@ -60,7 +95,7 @@ export class Tablebase {
   async value(p) {
     const i = rankPos(p);
     if (i < 0) return NO_DATA;
-    await this.ready;
+    await this.#ensureReady();
     if (this.meta.mirror) {
       const j = rankPos(mirrorPos(p));
       return this.byIndex(Math.min(i, j));

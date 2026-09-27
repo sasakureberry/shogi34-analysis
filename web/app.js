@@ -74,14 +74,21 @@ function resText(r, short = false) {
 function refreshEvals() {
   const token = ++state.evalToken;
   state.evals = null;
+  setStatus('');  // 前の局面での通信エラー表示は消す（また失敗したら出し直す）
   const p = cur();
   if (R.gameResult(p) || repetitionDraw()) { state.evals = []; render(); return; }
   evalMoves(p).then((ev) => {
     if (token !== state.evalToken) return;
     state.evals = ev;
+    setStatus('');
     render();
     afterEvals();
-  }).catch((e) => { setStatus(e.message); });
+  }).catch((e) => {
+    // 通信エラー: 知らせて、少し待ってから取り直す（同じ局面のままなら）
+    if (token !== state.evalToken) return;
+    setStatus(e.message + '。取り直しています…');
+    setTimeout(() => { if (token === state.evalToken) refreshEvals(); }, 3000);
+  });
 }
 
 // ---- 局面の移動 ----
@@ -363,7 +370,7 @@ function renderVerdict() {
     const winner = r.kind === 'win' ? p.turn : 1 - p.turn;
     el.innerHTML = `${who(winner)}の勝ち（あと${r.plies}手）<small>${turnText}・お互い最善を尽くした場合</small>`;
     el.classList.add(r.kind);
-  }).catch((e) => setStatus(e.message));
+  }).catch(() => {});  // 通信エラーは候補手の取り直し側で知らせる
 }
 
 function renderMoves() {
