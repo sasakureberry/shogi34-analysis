@@ -1,0 +1,5 @@
+# 解析の途中データ（大きいので作り直す）
+solver/*.bin
+solver/*.exe
+solver/*.log
+solver/vectors.txt

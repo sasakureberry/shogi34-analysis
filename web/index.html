@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3×4将棋 完全解析ボード</title>
+<meta name="description" content="3×4マスのミニ将棋を、全局面の完全解析データで検討できるボード。どの手を指せば何手で勝ち・負けかがすぐわかります。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 40'%3E%3Crect x='1' y='1' width='28' height='38' rx='3' fill='%23e8d9b5' stroke='%23b59a64' stroke-width='2'/%3E%3Cpath d='M10 1v38M20 1v38M1 14h28M1 27h28' stroke='%23b59a64'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <h1>3×4将棋 <span>完全解析ボード</span></h1>
+  <nav class="modes" role="tablist">
+    <button data-mode="analyze" class="on">検討</button>
+    <button data-mode="play">対局</button>
+    <button data-mode="edit">局面編集</button>
+    <button data-mode="help">遊び方</button>
+  </nav>
+</header>
+
+<main class="layout">
+  <section class="board-area">
+    <div id="verdict" class="verdict" aria-live="polite"></div>
+    <div class="hand" id="hand-top"></div>
+    <div class="board-wrap">
+      <div class="files" id="files-top"></div>
+      <div class="board-row">
+        <div class="board" id="board"></div>
+        <div class="ranks" id="ranks"></div>
+      </div>
+    </div>
+    <div class="hand" id="hand-bottom"></div>
+    <svg class="arrow-layer" id="arrow-layer" aria-hidden="true"></svg>
+
+    <div class="controls" id="nav-controls">
+      <button id="btn-first" title="最初へ">⏮</button>
+      <button id="btn-prev" title="1手戻る（←）">◀</button>
+      <button id="btn-next" title="1手進む（→）">▶</button>
+      <button id="btn-last" title="最後へ">⏭</button>
+      <button id="btn-best" class="accent" title="最善手を1手指す（B）">最善手</button>
+      <button id="btn-auto" title="最善手順を自動で再生">▶ 最善手順</button>
+      <button id="btn-flip" title="盤を反転（F）">⇅ 反転</button>
+    </div>
+
+    <div class="edit-tools" id="edit-tools" hidden>
+      <div class="palette" id="palette"></div>
+      <div class="edit-row">
+        <span>手番</span>
+        <button id="edit-turn"></button>
+        <button id="edit-initial">初期配置</button>
+        <button id="edit-clear">盤を空に</button>
+      </div>
+      <div class="edit-row">
+        <button id="edit-done" class="accent">この局面を検討する</button>
+        <button id="edit-cancel">やめる</button>
+      </div>
+      <p class="edit-msg" id="edit-msg"></p>
+    </div>
+
+    <div class="play-tools" id="play-tools" hidden>
+      <div class="edit-row">
+        <span>あなたは</span>
+        <select id="play-side"><option value="0">先手（下）</option><option value="1">後手（上）</option></select>
+        <span>相手の強さ</span>
+        <select id="play-level">
+          <option value="3">最強（完全解析）</option>
+          <option value="2">ふつう</option>
+          <option value="1">よわい</option>
+        </select>
+      </div>
+      <div class="edit-row">
+        <label><input type="checkbox" id="play-show-eval"> 評価を表示する</label>
+        <button id="play-start" class="accent">初期局面から対局開始</button>
+        <button id="play-here">この局面から対局</button>
+      </div>
+      <p class="edit-msg" id="play-msg"></p>
+    </div>
+  </section>
+
+  <section class="side">
+    <div class="panel">
+      <h2>候補手 <small id="moves-note"></small></h2>
+      <ol class="moves" id="moves"></ol>
+    </div>
+    <div class="panel">
+      <h2>棋譜 <small><button id="btn-copy" class="link">URLをコピー</button></small></h2>
+      <ol class="kifu" id="kifu"></ol>
+    </div>
+  </section>
+
+  <section class="help" id="help" hidden>
+    <h2>遊び方</h2>
+    <h3>ルール</h3>
+    <ul>
+      <li>3×4マスの盤で、ライオン・キリン・ゾウ・ヒヨコを1枚ずつ持って戦います。</li>
+      <li>動けるのはどれも1マス。ライオンは全方向、キリンはたて・よこ、ゾウはななめ、ヒヨコは前だけ。駒の点が動ける向きです。</li>
+      <li>ヒヨコは相手の陣（いちばん奥の段）に入るとニワトリになり、ななめ後ろ以外に動けます。</li>
+      <li>取った駒は持ち駒になり、自分の番に空いているマスへ打てます（ニワトリは取るとヒヨコに戻ります）。</li>
+      <li>相手のライオンを取るか、自分のライオンが相手の陣に入って次に取られなければ勝ちです。</li>
+      <li>同じ局面が3回あらわれたら引き分けです。</li>
+    </ul>
+    <h3>表示の見かた</h3>
+    <ul>
+      <li><b class="win">勝ち 13手</b> … その手を指すと、お互い最善を尽くして13手目（その手を含む）で勝てます。</li>
+      <li><b class="loss">負け 8手</b> … その手を指すと、相手が最善を尽くせば8手で負けます。できるだけ長く粘る手が上に来ます。</li>
+      <li><b class="draw">引き分け</b> … お互い最善なら決着がつきません。</li>
+      <li>棋譜の <b class="loss">✗</b> は結果が悪くなった手（勝ちを逃した・負けを早めた）、<b class="slow">△</b> は勝ちのままだが遠回りした手です。</li>
+    </ul>
+    <h3>操作</h3>
+    <ul>
+      <li>駒をクリック（タップ）すると、動かせるマスにその手の評価が出ます。</li>
+      <li>← → キーで1手戻る・進む、B で最善手、F で盤の反転。</li>
+      <li>「URLをコピー」で今の棋譜を人に送れます。</li>
+    </ul>
+    <h3>解析について</h3>
+    <p>初期局面から到達できる約2億4680万局面すべてについて、勝ち・負け・引き分けと決着までの手数を後退解析で求めてあります。初期局面は<b>後手の勝ち（78手）</b>です。局面編集で作った局面が初期局面から到達できない形だと、解析データがない場合があります。</p>
+    <p class="note">このツールは、北尾まどか氏が考案した「どうぶつしょうぎ」と同じルールの局面を検討できる非公式ツールです。考案者・販売元とは関係ありません。</p>
+  </section>
+</main>
+
+<footer class="foot">
+  <span id="status"></span>
+</footer>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
