@@ -24,3 +24,7 @@
 
 - `solver/` 解析（C）と Web 用データの作成
 - `web/` 公開するページ（HTML/JS、ビルド不要）。`web/data/` が解析データ（約78MB）
+
+## ライセンス
+
+[MIT License](LICENSE)（ソースコードと解析データの両方）。
